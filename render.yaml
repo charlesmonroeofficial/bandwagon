@@ -1,0 +1,24 @@
+# Render Blueprint: creates only a free Node web service.
+# Supply an external PostgreSQL connection string (for example, Neon).
+services:
+  - type: web
+    name: bandwagon
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_VERSION
+        value: 24.19.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ALLOW_DEMO
+        value: "false"
