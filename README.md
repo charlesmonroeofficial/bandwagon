@@ -69,6 +69,8 @@ The initial app is published on `main` so Render can connect immediately. Subseq
 ## Voting rules
 
 - Up to **10 active suggestions per member per band**. Add a YouTube link, title, artist, and optional pitch. Different URL formats for the same video resolve to one entry; duplicate submissions explain that the video is already present.
+- Pasting a YouTube link looks up its public title and channel using oEmbed, then guesses the artist and song name. Both fields remain editable. If lookup fails, enter the details manually; no YouTube API key is needed.
+- Use a song’s **⋯ → Edit my suggestion** to change its title, artist, note, or video while voting is open. Corrections keep votes and reset setlist approvals. Replacing the video requires confirmation, clears all its votes (returning skip/veto allowances), and resets approvals. Editing does not use another suggestion slot.
 - Each member has **one reaction per song**: want to play, prefer to skip, strong objection, or neutral. Click again to remove it or select a different reaction.
 - Likes and neutral reactions are unlimited. A member can have at most **3 skips** and **2 strong objections** active per band. Removing one restores the allowance.
 - A song enters the proposed setlist when **every current member reviews it**, a **strict majority likes it**, and it has **no strong objections**.
@@ -90,4 +92,4 @@ npm test
 
 To run the same integration suite against a **dedicated test PostgreSQL database**, set `TEST_DATABASE_URL` before running `npm test`. Tests create fixture records in that database. CI uses a disposable PostgreSQL service.
 
-Checks cover authentication, cross-origin writes, membership, duplicate detection, suggestion limits, vote allowances, simultaneous requests, consensus, approval resets, finalization, invite revocation, demo isolation, and transaction rollback. The live Google OAuth round trip still requires your configured credentials. Browser-based visual verification was unavailable in the authoring environment.
+Checks cover authentication, cross-origin writes, membership, duplicate detection, suggestion limits, vote allowances, simultaneous requests, consensus, approval resets, finalization, invite revocation, demo isolation, and transaction rollback. YouTube embeds send the app origin using `strict-origin-when-cross-origin`, as required for player identification; the external YouTube link remains available for videos that disallow embedding. Automated metadata tests use stubbed YouTube responses and do not require network access. The live Google OAuth round trip still requires your configured credentials. Browser-based visual verification was unavailable in the authoring environment.

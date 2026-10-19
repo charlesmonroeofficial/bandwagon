@@ -26,10 +26,18 @@ test("YouTube links are normalized and unrelated URLs are rejected", () => {
 
 test("band membership, voting fairness, consensus, approval, and finalization", async (t) => {
   const fixturePrefix = crypto.randomUUID();
+  const metadataRequests = [];
   const app = createApp({
     databaseUrl: process.env.TEST_DATABASE_URL || null,
     dbPath: ":memory:",
     allowDemo: false,
+    fetchYouTube: async (url) => {
+      metadataRequests.push(String(url));
+      return Response.json({
+        title: "Talking Heads - Psycho Killer (Official Video)",
+        author_name: "Talking Heads",
+      });
+    },
   });
   await app.ready;
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
@@ -77,9 +85,19 @@ test("band membership, voting fairness, consensus, approval, and finalization", 
   await t.test(
     "the app shell and its assets are served with security headers",
     async () => {
-      for (const path of ["/", "/app.js", "/style.css", "/healthz"]) {
+      for (const path of [
+        "/",
+        "/app.js",
+        "/song-tools.js",
+        "/style.css",
+        "/healthz",
+      ]) {
         const res = await fetch(base + path);
         assert.equal(res.status, 200);
+        assert.equal(
+          res.headers.get("referrer-policy"),
+          "strict-origin-when-cross-origin",
+        );
         assert.match(
           res.headers.get("content-security-policy"),
           /default-src 'self'/,
@@ -115,6 +133,24 @@ test("band membership, voting fairness, consensus, approval, and finalization", 
     await request("a", "bands", { name: "Nope" }, 403, "https://evil.example");
     await request("a", "demo", {}, 404);
   });
+  await t.test(
+    "metadata lookup requires sign-in and returns guessed song details",
+    async () => {
+      const link = encodeURIComponent("https://youtu.be/bpOSxM0rNPM");
+      await request("none", "youtube?url=" + link, undefined, 401);
+      const details = await request("a", "youtube?url=" + link);
+      assert.equal(details.title, "Psycho Killer");
+      assert.equal(details.artist, "Talking Heads");
+      assert.equal(metadataRequests.length, 1);
+      await request(
+        "a",
+        "youtube?url=" + encodeURIComponent("https://evil.example/video"),
+        undefined,
+        400,
+      );
+      assert.equal(metadataRequests.length, 1);
+    },
+  );
   let bandId, invite, songs;
   await t.test("invite-based membership protects private bands", async () => {
     const a = await request("a", "bands", { name: "The Test Band" });
@@ -238,6 +274,70 @@ test("band membership, voting fairness, consensus, approval, and finalization", 
       st = await request("a", "reopen", { bandId });
       assert.equal(st.band.finalized, 0);
       assert(st.band.members.every((m) => !m.approved));
+    },
+  );
+  await t.test(
+    "editing preserves votes for corrections and clears votes only for confirmed replacements",
+    async () => {
+      const song = songs[0],
+        edit = {
+          bandId,
+          songId: song.id,
+          url: "https://youtu.be/" + song.youtube,
+          title: "Corrected title",
+          artist: "Corrected artist",
+          note: "A better pitch",
+        };
+      await request("b", "edit-song", edit, 403);
+      await request("outsider", "edit-song", edit, 404);
+      for (const who of ["a", "b", "c"])
+        await request(who, "approve", { bandId, approved: true });
+      let st = await request("a", "edit-song", edit);
+      let changed = st.band.songs.find((s) => s.id === song.id);
+      assert.equal(st.band.songs.length, 10);
+      assert.equal(changed.title, "Corrected title");
+      assert.equal(changed.artist, "Corrected artist");
+      assert.equal(changed.note, "A better pitch");
+      assert.equal(changed.votes.length, 3);
+      assert(st.band.members.every((m) => !m.approved));
+      await request(
+        "a",
+        "edit-song",
+        {
+          ...edit,
+          url: "https://youtu.be/" + songs[1].youtube,
+          confirmReplacement: true,
+        },
+        409,
+      );
+      await request(
+        "a",
+        "edit-song",
+        { ...edit, url: "https://example.com/not-youtube" },
+        400,
+      );
+      st = await request("a", "session?band=" + bandId);
+      assert.equal(st.band.songs.find((s) => s.id === song.id).votes.length, 3);
+      await request(
+        "a",
+        "edit-song",
+        { ...edit, url: "https://youtu.be/replacement" },
+        409,
+      );
+      st = await request("a", "edit-song", {
+        ...edit,
+        url: "https://youtu.be/replacement",
+        confirmReplacement: true,
+      });
+      changed = st.band.songs.find((s) => s.id === song.id);
+      assert.equal(changed.youtube, "replacement");
+      assert.equal(changed.votes.length, 0);
+      assert.equal(changed.user_id, fixturePrefix + "a");
+      assert.equal(st.band.songs.length, 10);
+      await app.store.run("UPDATE bands SET finalized=1 WHERE id=?", bandId);
+      await request("a", "edit-song", edit, 409);
+      await app.store.run("UPDATE bands SET finalized=0 WHERE id=?", bandId);
+      await vote("a", 0, "up");
     },
   );
   await t.test(

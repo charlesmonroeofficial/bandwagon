@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "test": "node --test tests/*.test.js",
-    "check": "node --check server.js && node --check storage.js && node --check public/app.js",
+    "check": "node --check server.js && node --check storage.js && node --check youtube.js && node --check public/app.js && node --check public/song-tools.js",
     "dev": "node --env-file-if-exists=.env server.js"
   },
   "engines": {

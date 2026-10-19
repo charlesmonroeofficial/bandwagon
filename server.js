@@ -7,32 +7,9 @@ import path from "node:path";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const token = () => randomBytes(24).toString("base64url");
 const hash = (s) => createHash("sha256").update(s).digest("hex");
-export function youtubeId(raw) {
-  try {
-    const u = new URL(raw);
-    if (!["https:", "http:"].includes(u.protocol)) return null;
-    const h = u.hostname.toLowerCase();
-    let id;
-    if (h === "youtu.be") id = u.pathname.split("/")[1];
-    else if (
-      [
-        "youtube.com",
-        "www.youtube.com",
-        "m.youtube.com",
-        "music.youtube.com",
-      ].includes(h)
-    )
-      id =
-        u.pathname === "/watch"
-          ? u.searchParams.get("v")
-          : /^\/(shorts|embed|live)\//.test(u.pathname)
-            ? u.pathname.split("/")[2]
-            : null;
-    return /^[\w-]{11}$/.test(id || "") ? id : null;
-  } catch {
-    return null;
-  }
-}
+import { youtubeVideoId as youtubeId } from "./public/song-tools.js";
+import { createYouTubeLookup } from "./youtube.js";
+export { youtubeId };
 export function createApp({
   databaseUrl = process.env.DATABASE_URL,
   dbPath = process.env.DB_PATH || path.join(root, "work/bandwagon.sqlite"),
@@ -44,7 +21,9 @@ export function createApp({
       process.env.ALLOW_DEMO !== "false"),
   googleClientId = process.env.GOOGLE_CLIENT_ID,
   googleClientSecret = process.env.GOOGLE_CLIENT_SECRET,
+  fetchYouTube = globalThis.fetch,
 } = {}) {
+  const lookupYouTube = createYouTubeLookup({ fetchImpl: fetchYouTube });
   const store = createStore({
     databaseUrl,
     dbPath,
@@ -273,7 +252,7 @@ export function createApp({
     try {
       await ready;
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Referrer-Policy", "same-origin");
+      res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'self'; img-src 'self' https://i.ytimg.com; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src https://www.youtube-nocookie.com; base-uri 'none'; frame-ancestors 'self'; form-action 'self'",
@@ -417,6 +396,9 @@ export function createApp({
           return send(await makeDemo(res));
         }
         if (!user) fail("Please sign in first.", 401);
+        if (url.pathname === "/api/youtube" && req.method === "GET") {
+          return send(await lookupYouTube(url.searchParams.get("url")));
+        }
         if (url.pathname === "/api/logout" && req.method === "POST") {
           await run("DELETE FROM sessions WHERE id=?", hash(c.bw_session));
           res.setHeader("Set-Cookie", cookie("bw_session", "", 0));
@@ -551,6 +533,51 @@ export function createApp({
               Date.now(),
             );
             await reset(b.id);
+          } else if (url.pathname === "/api/edit-song") {
+            const song = await get(
+              "SELECT * FROM songs WHERE id=? AND band_id=?",
+              body.songId,
+              b.id,
+            );
+            if (!song || song.user_id !== user.id)
+              fail("You can only edit your own suggestions.", 403);
+            const youtube = youtubeId(body.url);
+            if (!youtube) fail("Please paste a valid YouTube video link.");
+            const title = clean(body.title, 100),
+              artist = clean(body.artist, 100),
+              note = clean(body.note || "", 280, 0);
+            if (
+              await get(
+                "SELECT 1 FROM songs WHERE band_id=? AND youtube=? AND id<>?",
+                b.id,
+                youtube,
+                song.id,
+              )
+            )
+              fail("That video is already in the pool.", 409);
+            const replaced = youtube !== song.youtube;
+            if (replaced && body.confirmReplacement !== true)
+              fail(
+                "Confirm that changing the video clears its votes before saving.",
+                409,
+              );
+            if (replaced)
+              await run("DELETE FROM votes WHERE song_id=?", song.id);
+            await run(
+              "UPDATE songs SET youtube=?,title=?,artist=?,note=? WHERE id=?",
+              youtube,
+              title,
+              artist,
+              note,
+              song.id,
+            );
+            if (
+              replaced ||
+              title !== song.title ||
+              artist !== song.artist ||
+              note !== song.note
+            )
+              await reset(b.id);
           } else if (url.pathname === "/api/vote") {
             const s = await get(
               "SELECT * FROM songs WHERE id=? AND band_id=?",
@@ -641,6 +668,7 @@ export function createApp({
       const files = {
         "/": "index.html",
         "/app.js": "app.js",
+        "/song-tools.js": "song-tools.js",
         "/style.css": "style.css",
         "/privacy": "privacy.html",
         "/privacy/": "privacy.html",
