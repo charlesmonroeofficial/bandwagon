@@ -642,6 +642,11 @@ export function createApp({
         "/": "index.html",
         "/app.js": "app.js",
         "/style.css": "style.css",
+        "/privacy": "privacy.html",
+        "/privacy/": "privacy.html",
+        "/legal.css": "legal.css",
+        "/terms": "terms.html",
+        "/terms/": "terms.html",
       };
       const f = files[url.pathname];
       if (!f) fail("Not found.", 404);

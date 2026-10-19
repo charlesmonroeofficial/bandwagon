@@ -90,6 +90,26 @@ test("band membership, voting fairness, consensus, approval, and finalization", 
       assert.equal(res.status, 404);
     },
   );
+  await t.test(
+    "privacy and terms are public without sign-in and identify the operator",
+    async () => {
+      for (const path of ["/privacy", "/privacy/", "/terms", "/terms/"]) {
+        const response = await fetch(base + path);
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get("content-type"), /text\/html/);
+        const html = await response.text();
+        assert.match(html, /Charles Monroe/);
+        assert.match(html, /mailto:charlesmonroeofficial@gmail.com/);
+        if (path.startsWith("/privacy"))
+          assert.match(html, /Google API Services User Data Policy/);
+        assert(!html.includes("__OPERATOR__"));
+        assert(!html.includes("__EMAIL__"));
+      }
+      const css = await fetch(base + "/legal.css");
+      assert.equal(css.status, 200);
+      assert.match(css.headers.get("content-type"), /text\/css/);
+    },
+  );
   await t.test("authentication and CSRF are enforced", async () => {
     await request("none", "bands", { name: "Nope" }, 401);
     await request("a", "bands", { name: "Nope" }, 403, "https://evil.example");

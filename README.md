@@ -40,6 +40,8 @@ In Google Cloud Console:
 
 The redirect URI must match the app's origin exactly. Never commit the database URL, Google client secret, or `.env` file. Do not put secrets in issues or pull requests.
 
+For Google's production branding settings, the app provides a public, sign-in-free privacy policy at **`https://bandwagon-it23.onrender.com/privacy`**, linked from both the welcome screen and signed-in app. The homepage is **`https://bandwagon-it23.onrender.com`** and terms of service are at **`https://bandwagon-it23.onrender.com/terms`**. Use **Charles Monroe** as the operator and **charlesmonroeofficial@gmail.com** as the support/contact email. Update `public/privacy.html` if the operator, contact, hosting providers, or data practices change. Google may separately require branding or domain verification before publication.
+
 Google sign-in uses state checking and PKCE. Sessions are opaque, stored hashed in the database, and sent in HttpOnly cookies (Secure on HTTPS). Band access is authorized server-side; cross-origin writes are rejected.
 
 ## Local development
